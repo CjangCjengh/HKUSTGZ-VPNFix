@@ -1,36 +1,36 @@
 # HKUST(GZ) VPN Fix
 
-Fix routing conflicts caused by HKUST(GZ) Sangfor / EasyConnect VPN on Windows.
+修复香港科技大学（广州）Sangfor / EasyConnect 校园 VPN 在 Windows 上的路由冲突。
 
-## Motivation
+## 用途
 
-The school VPN pushes hundreds of public routes into the Windows routing table, forcing most external traffic through the VPN tunnel and making general Internet access slow. This tool removes those unwanted routes and keeps only campus internal subnets (`10/8`, `172.16/12`, `192.168/16`) on the VPN, so external traffic can go through your normal connection / Clash.
+学校 VPN 连接后会往系统路由表里推送大量公网路由，导致外网流量被迫走学校 VPN，速度变慢。这个工具会自动清理这些过量路由，只保留校园内网段（`10/8`、`172.16/12`、`192.168/16`）走学校 VPN，让外网流量恢复正常连接或走 Clash。
 
-## Files
+## 文件
 
-- `fix_sangfor_routes.ps1` — manually clean routes once
-- `register_sangfor_auto_clean.ps1` — register an auto-clean scheduled task
+- `fix_sangfor_routes.ps1` — 手动执行一次路由清理
+- `register_sangfor_auto_clean.ps1` — 注册自动清理计划任务
 
-## Usage
+## 使用方法
 
-1. Connect to the school VPN.
-2. Open PowerShell **as Administrator**.
-3. Run the cleaner manually:
+1. 先连接学校 VPN。
+2. 用**管理员身份**打开 PowerShell。
+3. 手动清理：
 
    ```powershell
    .\fix_sangfor_routes.ps1
    ```
 
-   Or register the auto-clean task:
+   或者注册自动任务：
 
    ```powershell
    .\register_sangfor_auto_clean.ps1
    ```
 
-4. If you registered the task, both `.ps1` files can be deleted afterwards — the cleanup logic is embedded in the scheduled task via `powershell.exe -EncodedCommand`.
+4. 注册完自动任务后，两个 `.ps1` 文件都可以删掉——清理逻辑已经通过 `powershell.exe -EncodedCommand` 嵌入到计划任务里了。
 
-## Notes
+## 说明
 
-- Requires Windows administrator privileges.
-- No local log files are written.
-- If a campus resource becomes unreachable, disconnect and reconnect the VPN to let the task run again, or run `fix_sangfor_routes.ps1` manually.
+- 需要 Windows 管理员权限。
+- 不写任何本地日志文件。
+- 如果某些校内资源打不开，可以断开 VPN 重新连接触发自动清理，或者手动运行 `fix_sangfor_routes.ps1`。
