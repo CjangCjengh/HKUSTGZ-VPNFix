@@ -27,7 +27,7 @@
    .\register_sangfor_auto_clean.ps1
    ```
 
-4. 注册完自动任务后，两个 `.ps1` 文件都可以删掉——清理逻辑已经通过 `powershell.exe -EncodedCommand` 嵌入到计划任务里了。
+4. 注册完自动任务后，两个 `.ps1` 文件都可以删掉——清理逻辑已经通过 `powershell.exe -EncodedCommand` 嵌入到计划任务里了。任务触发后会循环清理 2 分钟（每 10 秒一次），防止 Sangfor 分批推送路由导致漏清。
 
 ## 说明
 

@@ -12,16 +12,9 @@ $taskName = "CleanSangforRoutesOnConnect"
 $taskDescription = "检测到 Sangfor VPN 连接后，自动清理过量公网路由"
 
 # 内联清理脚本（不依赖外部 .ps1 文件）
+# VPN 连接后 Sangfor 会分批推路由，所以循环清理：每 10 秒一次，最多 12 次（2 分钟），VPN 断开则提前退出
 $cleanScript = @'
 $ErrorActionPreference = "Continue"
-$sangforAdapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "Sangfor" -or $_.Name -match "Sangfor" }
-if (-not $sangforAdapter) { exit 1 }
-$ifIndex = $sangforAdapter.InterfaceIndex
-$allSangforRoutes = Get-NetRoute -InterfaceIndex $ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
-$sangforGateway = $allSangforRoutes |
-    Where-Object { $_.NextHop -and $_.NextHop -ne "0.0.0.0" -and $_.DestinationPrefix -ne "0.0.0.0/0" } |
-    Group-Object NextHop | Sort-Object Count -Descending | Select-Object -First 1 -ExpandProperty Name
-if (-not $sangforGateway) { exit 1 }
 $whitelist = @("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 function Test-PrefixInWhitelist($DestPrefix) {
     foreach ($p in $whitelist) {
@@ -31,23 +24,40 @@ function Test-PrefixInWhitelist($DestPrefix) {
     }
     return $false
 }
-$routesViaGateway = Get-NetRoute -AddressFamily IPv4 | Where-Object {
-    $_.NextHop -eq $sangforGateway -and
-    $_.DestinationPrefix -ne "0.0.0.0/0" -and
-    $_.DestinationPrefix -notmatch "^224\." -and
-    $_.DestinationPrefix -notmatch "^255\."
+function Get-SangforGateway() {
+    $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "Sangfor" -or $_.Name -match "Sangfor" }
+    if (-not $adapter -or $adapter.Status -ne "Up") { return $null }
+    $routes = Get-NetRoute -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.NextHop -and $_.NextHop -ne "0.0.0.0" -and $_.DestinationPrefix -ne "0.0.0.0/0" }
+    return $routes | Group-Object NextHop | Sort-Object Count -Descending | Select-Object -First 1 -ExpandProperty Name
 }
-foreach ($route in $routesViaGateway) {
-    $dest = $route.DestinationPrefix
-    if (-not (Test-PrefixInWhitelist $dest)) {
-        Remove-NetRoute -DestinationPrefix $dest -NextHop $sangforGateway -InterfaceIndex $route.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+$iter = 0
+$maxIter = 12
+while ($iter -lt $maxIter) {
+    $gateway = Get-SangforGateway
+    if (-not $gateway) { break }
+    $routesViaGateway = Get-NetRoute -AddressFamily IPv4 | Where-Object {
+        $_.NextHop -eq $gateway -and
+        $_.DestinationPrefix -ne "0.0.0.0/0" -and
+        $_.DestinationPrefix -notmatch "^224\." -and
+        $_.DestinationPrefix -notmatch "^255\."
     }
-}
-foreach ($p in $whitelist) {
-    $exists = Get-NetRoute -DestinationPrefix $p -NextHop $sangforGateway -InterfaceIndex $ifIndex -ErrorAction SilentlyContinue
-    if (-not $exists) {
-        New-NetRoute -DestinationPrefix $p -NextHop $sangforGateway -InterfaceIndex $ifIndex -RouteMetric 1 -ErrorAction SilentlyContinue | Out-Null
+    foreach ($route in $routesViaGateway) {
+        $dest = $route.DestinationPrefix
+        if (-not (Test-PrefixInWhitelist $dest)) {
+            Remove-NetRoute -DestinationPrefix $dest -NextHop $gateway -InterfaceIndex $route.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+        }
     }
+    foreach ($p in $whitelist) {
+        $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "Sangfor" -or $_.Name -match "Sangfor" } | Select-Object -First 1
+        if (-not $adapter) { continue }
+        $exists = Get-NetRoute -DestinationPrefix $p -NextHop $gateway -InterfaceIndex $adapter.InterfaceIndex -ErrorAction SilentlyContinue
+        if (-not $exists) {
+            New-NetRoute -DestinationPrefix $p -NextHop $gateway -InterfaceIndex $adapter.InterfaceIndex -RouteMetric 1 -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+    Start-Sleep -Seconds 10
+    $iter++
 }
 '@
 
