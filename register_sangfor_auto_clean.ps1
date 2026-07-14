@@ -65,13 +65,13 @@ while ($iter -lt $maxIter) {
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cleanScript))
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
 
-# 事件触发器：NetworkProfile/Operational Event ID 10000，且适配器描述为 Sangfor
+# 事件触发器：NetworkProfile/Operational Event ID 10000（任何网络连接事件）
+# 脚本内部会再判断是不是 Sangfor 网卡，避免描述字段匹配失败导致不触发
 $xpath = @"
 <QueryList>
   <Query Id="0" Path="Microsoft-Windows-NetworkProfile/Operational">
     <Select Path="Microsoft-Windows-NetworkProfile/Operational">
       *[System[(EventID=10000)]]
-      [EventData[(Data[@Name='Description']='Sangfor SSL VPN CS Support System VNIC')]]
     </Select>
   </Query>
 </QueryList>
